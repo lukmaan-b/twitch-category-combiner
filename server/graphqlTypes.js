@@ -1,4 +1,4 @@
-const { GraphQLObjectType, GraphQLString } = require('graphql');
+const { GraphQLObjectType, GraphQLString, GraphQLInt } = require('graphql');
 
 const streamType = new GraphQLObjectType({
   name: 'Stream',
@@ -10,6 +10,7 @@ const streamType = new GraphQLObjectType({
     title: { type: GraphQLString },
     language: { type: GraphQLString },
     thumbnail_url: { type: GraphQLString },
+    viewer_count: { type: GraphQLInt },
   },
 });
 

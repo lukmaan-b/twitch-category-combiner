@@ -3,16 +3,18 @@ require('dotenv').config();
 const axios = require('axios');
 const express = require('express');
 const app = express();
+const cors = require('cors');
 const {
   GraphQLObjectType,
   GraphQLSchema,
   GraphQLString,
   GraphQLList,
+  GraphQLNonNull,
 } = require('graphql');
 const { graphqlHTTP } = require('express-graphql');
 const { categoryType, streamType } = require('./graphqlTypes');
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
 const queryType = new GraphQLObjectType({
   name: 'Query',
@@ -20,10 +22,10 @@ const queryType = new GraphQLObjectType({
     category: {
       type: GraphQLList(categoryType),
       args: {
-        name: { type: GraphQLString },
+        categoryInput: { type: GraphQLNonNull(GraphQLString) },
       },
       resolve: async (_, args) => {
-        const q = encodeURIComponent(args.name);
+        const q = encodeURIComponent(args.categoryInput);
         const {
           data: { data },
         } = await axios.get(
@@ -41,24 +43,48 @@ const queryType = new GraphQLObjectType({
       },
     },
     streams: {
-      type: GraphQLList(streamType),
+      type: GraphQLList(GraphQLList(streamType)),
       args: {
         game_ids: { type: GraphQLList(GraphQLString) },
       },
       resolve: async (root, { game_ids }) => {
-        const q = game_ids
-          .map((id) => `game_id=${encodeURIComponent(id)}`)
-          .join('&');
+        let data = [];
 
-        const {
-          data: { data },
-        } = await axios.get(`https://api.twitch.tv/helix/streams?${q}`, {
-          headers: {
-            accept: 'application/vnd.twitchtv.v5+json',
-            'Client-ID': process.env.CLIENT_ID,
-            Authorization: `Bearer ${authPayload.access_token}`,
-          },
-        });
+        if (game_ids) {
+          for (
+            let i = 0;
+            i < (game_ids.length > 5 ? 5 : game_ids.length);
+            i++
+          ) {
+            const {
+              data: { data: streams },
+            } = await axios.get(
+              `https://api.twitch.tv/helix/streams?game_id=${encodeURIComponent(
+                game_ids[i]
+              )}&first=5`,
+              {
+                headers: {
+                  accept: 'application/vnd.twitchtv.v5+json',
+                  'Client-ID': process.env.CLIENT_ID,
+                  Authorization: `Bearer ${authPayload.access_token}`,
+                },
+              }
+            );
+            data.push(streams);
+          }
+        } else {
+          const {
+            data: { data: streams },
+          } = await axios.get(`https://api.twitch.tv/helix/streams?&first=5`, {
+            headers: {
+              accept: 'application/vnd.twitchtv.v5+json',
+              'Client-ID': process.env.CLIENT_ID,
+              Authorization: `Bearer ${authPayload.access_token}`,
+            },
+          });
+          data.push(streams);
+        }
+
         return data;
       },
     },
@@ -95,6 +121,9 @@ app.use(express.json());
 app.use(express.urlencoded());
 
 app.use(checkAuthToken);
+
+app.use(cors());
+
 app.use(
   '/graphql',
   graphqlHTTP({
